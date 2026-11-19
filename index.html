@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0B0B0C">
+<title>baht.</title>
+<meta name="description" content="Follow the baht.">
+<meta property="og:title" content="baht.">
+<meta property="og:description" content="Follow the baht.">
+<meta property="og:image" content="latest.jpg">
+<link rel="icon" href="icon.png">
+<link rel="apple-touch-icon" href="icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=Bodoni+Moda:ital,opsz,wght@0,6..96,500..700;1,6..96,500..700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root { --onyx:#0B0B0C; --ivory:#EDE6D6; --brass:#B08D57; --mute:#8C857A; }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  html { background:var(--onyx); scrollbar-width:none; }
+  html::-webkit-scrollbar { display:none; }
+  body { background:var(--onyx); color:var(--ivory); font-family:"Archivo",system-ui,sans-serif; -webkit-font-smoothing:antialiased;
+         -webkit-tap-highlight-color:transparent; overflow-x:hidden; }
+  #track { height:560vh; }
+  canvas#gl { position:fixed; inset:0; width:100%; height:100%; display:block; }
+  .mono { font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:11px; letter-spacing:.18em; text-transform:uppercase; color:var(--mute); }
+
+  /* scrims keep every word on a calm, dark ground */
+  .scrim { position:fixed; inset:0; pointer-events:none; transition:opacity .8s; }
+  .scrim.a { background:linear-gradient(90deg, rgba(11,11,12,.96) 0%, rgba(11,11,12,.86) 26%, rgba(11,11,12,0) 52%),
+                        linear-gradient(0deg, rgba(11,11,12,.9) 0%, rgba(11,11,12,0) 30%), linear-gradient(180deg, rgba(11,11,12,.8) 0%, rgba(11,11,12,0) 16%); }
+  .scrim.b { opacity:0; background:linear-gradient(0deg, rgba(11,11,12,1) 0%, rgba(11,11,12,.97) 40%, rgba(11,11,12,0) 66%), linear-gradient(180deg, rgba(11,11,12,.8) 0%, rgba(11,11,12,0) 16%); }
+  body.end .scrim.a { opacity:0; } body.end .scrim.b { opacity:1; }
+
+  /* HUD */
+  .hud { position:fixed; z-index:5; pointer-events:none; }
+  .brand { top:26px; left:28px; display:flex; align-items:center; gap:10px; }
+  .brand svg { height:22px; width:auto; }
+  .brand b { font-family:"Bodoni Moda",serif; font-weight:640; font-size:22px; letter-spacing:-.01em; color:var(--ivory); }
+  .coords { top:30px; right:28px; text-align:right; line-height:1.7; }
+  .coords i { font-style:normal; color:var(--brass); }
+  .rail { right:28px; top:50%; transform:translateY(-50%); display:flex; flex-direction:column; gap:14px; align-items:flex-end; }
+  .rail span { display:flex; align-items:center; gap:10px; transition:color .4s; }
+  .rail span::after { content:""; width:18px; height:1px; background:currentColor; transition:width .4s; }
+  .rail span.on { color:var(--brass); } .rail span.on::after { width:44px; }
+  .scroll { left:50%; bottom:26px; transform:translateX(-50%); display:flex; flex-direction:column; align-items:center; gap:10px; transition:opacity .5s; }
+  .scroll::after { content:""; width:1px; height:38px; background:linear-gradient(var(--brass), transparent); animation:drip 1.8s infinite; transform-origin:top; }
+  @keyframes drip { 0%{transform:scaleY(0)} 50%{transform:scaleY(1)} 100%{transform:scaleY(1); opacity:0} }
+  body.end .scroll, body.moved .scroll { opacity:0; }
+  .pct { left:28px; bottom:26px; transition:opacity .5s; }
+  .pct i { font-style:normal; color:var(--ivory); }
+  body.end .pct { opacity:0; }
+
+  /* chapters */
+  .chapter { position:fixed; z-index:4; left:clamp(28px, 7vw, 120px); bottom:clamp(96px, 16vh, 170px); width:min(600px, 44vw); pointer-events:none; visibility:hidden; }
+  .chapter.on { visibility:visible; }
+  .chapter .mono { display:block; margin-bottom:22px; color:var(--brass); }
+  h1, h2 { font-family:"Bodoni Moda",serif; font-weight:600; font-size:clamp(40px, 4.9vw, 78px); line-height:1.04; letter-spacing:-.012em; color:var(--ivory); }
+  h1 em, h2 em { font-style:italic; color:var(--brass); }
+  .w { display:inline-block; overflow:hidden; vertical-align:top; padding:0 .04em .14em; margin:0 -.04em -.14em; }
+  .w > span { display:inline-block; transform:translateY(118%); transition:transform .9s cubic-bezier(.16,1,.3,1); }
+  .chapter.on .w > span { transform:none; }
+  .chapter.off .w > span { transform:translateY(-118%); transition-duration:.45s; transition-delay:0s !important; }
+
+  /* tower tags */
+  .tag { position:fixed; z-index:3; left:0; top:0; pointer-events:none; opacity:0; transition:opacity .5s; white-space:nowrap; color:var(--ivory); padding-left:54px; }
+  .tag::before { content:""; position:absolute; left:0; top:50%; width:44px; height:1px; background:var(--brass); }
+  .tag::after { content:""; position:absolute; left:-3px; top:50%; width:7px; height:7px; margin-top:-3.5px; border-radius:50%; background:var(--brass); box-shadow:0 0 14px var(--brass); }
+  .tag i { font-style:normal; color:var(--brass); margin-left:10px; }
+
+  /* the ending */
+  .chapter.end { left:24px; right:24px; width:auto; bottom:clamp(84px, 12vh, 140px); text-align:center; }
+  .end h2 { font-size:clamp(52px, 6.6vw, 108px); line-height:.96; }
+  form { margin:clamp(26px, 4.5vh, 44px) auto 0; display:flex; align-items:stretch; width:min(520px, 100%); border:1px solid rgba(237,230,214,.35); background:rgba(11,11,12,.7);
+         opacity:0; transform:translateY(16px); transition:opacity .8s .5s, transform .8s .5s, border-color .3s, box-shadow .3s; pointer-events:auto; }
+  .chapter.on form { opacity:1; transform:none; }
+  form:focus-within { border-color:var(--brass); box-shadow:0 0 0 1px var(--brass), 0 0 50px rgba(176,141,87,.25); }
+  input { flex:1; min-width:0; background:none; border:0; outline:0; color:var(--ivory); font:500 17px/1 "Archivo",sans-serif; padding:21px 20px; letter-spacing:.01em; }
+  input::placeholder { color:#7d766b; }
+  button { background:var(--brass); color:var(--onyx); border:0; cursor:pointer; font:700 13px/1 "Archivo",sans-serif; letter-spacing:.22em; text-transform:uppercase; padding:0 28px;
+           display:flex; align-items:center; gap:12px; position:relative; overflow:hidden; }
+  button::after { content:""; position:absolute; inset:0; background:linear-gradient(110deg, transparent 30%, rgba(255,245,220,.6) 50%, transparent 70%); transform:translateX(-120%); animation:sheen 3.4s 2s infinite; }
+  @keyframes sheen { 0%{transform:translateX(-120%)} 35%,100%{transform:translateX(120%)} }
+  button svg { width:16px; height:16px; transition:transform .3s; } button:hover svg { transform:translateX(4px); }
+  .bh { margin:clamp(26px, 4.5vh, 44px) auto 0; width:min(520px, 100%); pointer-events:auto; opacity:0; transform:translateY(16px); transition:opacity .8s .5s, transform .8s .5s; }
+  .chapter.on .bh { opacity:1; transform:none; }
+  .bh.off { display:none; }
+  .bh iframe { color-scheme:light; }
+  form[hidden] { display:none; }
+  .note { margin-top:16px; min-height:18px; opacity:0; transition:opacity .8s .8s; pointer-events:auto; }
+  .chapter.on .note { opacity:1; }
+  .note a { color:var(--brass); }
+  .done { font-family:"Bodoni Moda",serif; font-style:italic; font-size:clamp(24px, 3vw, 34px); color:var(--brass); margin-top:30px; }
+  .socials { position:fixed; z-index:5; left:0; right:0; bottom:24px; display:flex; justify-content:center; gap:28px; opacity:0; pointer-events:none; transition:opacity .8s; }
+  body.end .socials { opacity:1; pointer-events:auto; }
+  .socials a { color:var(--mute); text-decoration:none; padding:8px 4px; } .socials a:hover { color:var(--ivory); }
+
+  /* loader */
+  #loader { position:fixed; inset:0; z-index:20; background:var(--onyx); display:flex; align-items:flex-end; justify-content:space-between; padding:28px; transition:clip-path 1.1s cubic-bezier(.76,0,.24,1); clip-path:inset(0 0 0 0); }
+  #loader.gone { clip-path:inset(0 0 100% 0); pointer-events:none; }
+  #loader .n { font-family:"Bodoni Moda",serif; font-weight:600; font-size:clamp(90px, 22vw, 260px); line-height:.8; color:var(--ivory); }
+  #loader .n em { color:var(--brass); font-style:italic; }
+
+  /* cursor */
+  #cur { position:fixed; z-index:30; left:0; top:0; width:34px; height:34px; margin:-17px 0 0 -17px; border:1px solid var(--brass); border-radius:50%; pointer-events:none; opacity:0; transition:opacity .3s, width .25s, height .25s, margin .25s, background .25s; }
+  #cur.big { width:64px; height:64px; margin:-32px 0 0 -32px; background:rgba(176,141,87,.12); }
+
+  @media (max-width:760px) {
+    .scrim.a { background:linear-gradient(0deg, rgba(11,11,12,1) 0%, rgba(11,11,12,.96) 36%, rgba(11,11,12,0) 62%), linear-gradient(180deg, rgba(11,11,12,.85) 0%, rgba(11,11,12,0) 14%); }
+    .scrim.b { background:linear-gradient(0deg, rgba(11,11,12,1) 0%, rgba(11,11,12,.97) 46%, rgba(11,11,12,0) 68%), linear-gradient(180deg, rgba(11,11,12,.85) 0%, rgba(11,11,12,0) 14%); }
+    .brand { top:20px; left:20px; } .coords { top:23px; right:20px; } .coords .x { display:none; }
+    .rail, .pct { display:none; }
+    .chapter { left:22px; right:22px; width:auto; bottom:96px; }
+    h1, h2 { font-size:clamp(36px, 10.4vw, 52px); }
+    .chapter.end { left:22px; right:22px; bottom:80px; }
+    .end h2 { font-size:clamp(54px, 17vw, 84px); max-width:6.4em; margin:0 auto; line-height:.92; }
+    form { flex-direction:column; } button { padding:19px; justify-content:center; } input { padding:19px 18px; text-align:center; }
+    .tag { padding-left:34px; font-size:10px; } .tag::before { width:26px; }
+    #loader { padding:20px; }
+    #cur { display:none; }
+  }
+  @media (hover:none) { #cur { display:none; } }
+</style>
+</head>
+<body>
+<div id="track"></div>
+<canvas id="gl" aria-hidden="true"></canvas>
+<div class="scrim a"></div><div class="scrim b"></div>
+
+<div class="hud brand"><svg viewBox="250 220 540 560" aria-hidden="true"><path d="M290 250 770 500 290 750V650L578 500 290 350Z" fill="#EDE6D6"/><path d="M419.6 317.5 492 236l23.6 131.5Z" fill="#B08D57"/></svg><b>baht.</b></div>
+<div class="hud coords mono"><span class="x">13.7563° N &nbsp;100.5018° E<br></span>BKK <i id="clock">--:--:--</i></div>
+<div class="hud scroll mono">Scroll</div>
+
+<section class="chapter" data-c="0"><h1>Bangkok runs on money you never see.</h1></section>
+<section class="chapter" data-c="1"><h2>Who owns the tower. What the deal cost. Where the fortune came from.</h2></section>
+<section class="chapter" data-c="2"><h2>Nobody shows you. <em>So we do.</em></h2></section>
+<section class="chapter end" data-c="3">
+  <h2>Follow the <em>baht.</em></h2>
+  <div class="bh" id="bh"><script async src="https://subscribe-forms.beehiiv.com/v3/loader.js" data-beehiiv-form="2438521e-1d50-44b2-8693-8e3b60aac793"></script></div>
+  <form id="form" novalidate hidden>
+    <input id="email" type="email" name="email" inputmode="email" autocomplete="email" placeholder="your@email.com" aria-label="Email address" required>
+    <button type="submit">Join <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button>
+  </form>
+  <p class="note mono" id="note"></p>
+</section>
+
+<div class="tag mono" id="t0">Owner<i></i></div>
+<div class="tag mono" id="t1">Deal<i></i></div>
+<div class="tag mono" id="t2">Fortune<i></i></div>
+
+<nav class="socials mono"><a href="https://www.instagram.com/trybaht/" target="_blank" rel="noopener">Instagram</a><a href="https://www.tiktok.com/@trybaht" target="_blank" rel="noopener">TikTok</a></nav>
+
+<div id="loader"><span class="mono">Following the money</span><span class="n" id="ln">0<em>.</em></span></div>
+<div id="cur"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(() => {
+  /* fallback confirm page (beehiiv magic link) used only when the embedded form can't load */
+  const FALLBACK = "https://magic.beehiiv.com/v1/bda1eea0-39c7-4955-a27d-f575e7821ddf";
+
+  const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
+  const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
+  const smooth = (a, b, x) => { x = clamp((x - a) / (b - a)); return x * x * x * (x * (x * 6 - 15) + 10); };
+  const rnd = (a, b) => a + Math.random() * (b - a);
+
+  /* ---------- words: split for masked reveals ---------- */
+  $$(".chapter h1, .chapter h2").forEach(h => {
+    let i = 0;
+    const wrap = node => [...node.childNodes].forEach(n => {
+      if (n.nodeType === 3) {
+        const f = document.createDocumentFragment();
+        n.textContent.split(/(\s+)/).forEach(t => {
+          if (!t) return;
+          if (/^\s+$/.test(t)) { f.appendChild(document.createTextNode(" ")); return; }
+          const w = document.createElement("span"); w.className = "w";
+          const s = document.createElement("span"); s.textContent = t; s.style.transitionDelay = (i++ * 45) + "ms";
+          w.appendChild(s); f.appendChild(w);
+        });
+        n.replaceWith(f);
+      } else wrap(n);
+    });
+    wrap(h);
+  });
+
+  /* ---------- three ---------- */
+  const canvas = $("#gl");
+  let renderer = null;
+  try { if (window.THREE) renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: "high-performance" }); } catch (e) {}
+  const ok = !!renderer;
+  let W = innerWidth, H = innerHeight, small = W < 760;
+  const HERO_H = 560, G = 130, R = 1560;
+  let scene, camera, lineMat, ptMat, IV, BR;
+  const V = (x, y, z) => new THREE.Vector3(x, y, z);
+
+  if (ok) {
+    IV = new THREE.Color("#EDE6D6"); BR = new THREE.Color("#B08D57");
+    scene = new THREE.Scene(); camera = new THREE.PerspectiveCamera(42, W / H, 1, 8000);
+    renderer.setClearColor(0x0B0B0C, 1);
+    /* city: every tower and the floor in one line buffer; towers grow out of the ground in the shader */
+    const pos = [], info = [];
+    const L = (a, b, delay, bright, hero = 0) => { pos.push(...a, ...b); info.push(delay, bright, hero, delay, bright, hero); };
+    const tower = (x, z, w, d, h, delay, hero = 0) => {
+      const hw = w / 2, hd = d / 2, c = [[x - hw, z - hd], [x + hw, z - hd], [x + hw, z + hd], [x - hw, z + hd]];
+      const floors = Math.max(3, Math.round(h / (hero ? 28 : 44)));
+      for (let i = 0; i < 4; i++) {
+        const [ax, az] = c[i], [bx, bz] = c[(i + 1) % 4];
+        L([ax, 0, az], [ax, h, az], delay, hero ? .9 : .62, hero);
+        L([ax, h, az], [bx, h, bz], delay, hero ? 1 : .8, hero);
+        for (let k = 1; k < floors; k++) { const y = h * k / floors; L([ax, y, az], [bx, y, bz], delay, hero ? .3 : .15, hero); }
+        if (hero) for (let m = 1; m < 5; m++) { const u = m / 5; L([ax + (bx - ax) * u, 0, az + (bz - az) * u], [ax + (bx - ax) * u, h, az + (bz - az) * u], delay, .22, 1); }
+      }
+      if (hero) L([x, h, z], [x, h + 110, z], delay, 1, 1);
+    };
+    for (let gx = -12; gx <= 12; gx++) for (let gz = -12; gz <= 12; gz++) {
+      const x = gx * G, z = gz * G, r = Math.hypot(x, z);
+      if (r > R || (gx === 0 && gz === 0)) continue;
+      if (Math.abs(x) < 300 && z > 100 && z < 760) continue;          // the street the camera flies down
+      if (Math.random() < .22) continue;
+      const centre = 1 - r / R;
+      tower(x + rnd(-12, 12), z + rnd(-12, 12), rnd(52, 84), rnd(52, 84), rnd(70, 190) + Math.pow(centre, 1.6) * rnd(160, 420), .2 + r / R * 1.6 + rnd(0, .5));
+    }
+    tower(0, 0, 96, 96, HERO_H, .1, 1);
+    for (let i = -24; i <= 24; i++) { const u = i * 65; L([u, 0, -R], [u, 0, R], -9, .1); L([-R, 0, u], [R, 0, u], -9, .1); }
+    const lg = new THREE.BufferGeometry();
+    lg.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+    lg.setAttribute("aInfo", new THREE.Float32BufferAttribute(info, 3));
+    lineMat = new THREE.ShaderMaterial({
+      transparent: true, depthWrite: false,
+      uniforms: { uReveal: { value: 0 }, uHero: { value: 0 }, uDim: { value: 1 }, uIv: { value: IV }, uBr: { value: BR } },
+      vertexShader: `attribute vec3 aInfo; uniform float uReveal, uHero, uDim; varying float vA; varying float vH;
+        void main(){ float g = clamp((uReveal - aInfo.x) / 1.7, 0., 1.); g = 1. - pow(1. - g, 3.);
+          vec3 p = position; p.y *= g; vec4 mv = modelViewMatrix * vec4(p, 1.); gl_Position = projectionMatrix * mv;
+          float fog = exp(-0.00034 * -mv.z); float h = aInfo.z * uHero; vH = h;
+          vA = min(1., mix(aInfo.y * uDim * 1.55, aInfo.y * 1.6 + .15, h) * fog) * smoothstep(0., .04, g); }`,
+      fragmentShader: `uniform vec3 uIv; uniform vec3 uBr; varying float vA; varying float vH; void main(){ gl_FragColor = vec4(mix(uIv, uBr, vH), vA); }`
+    });
+    const lines = new THREE.LineSegments(lg, lineMat); lines.frustumCulled = false; scene.add(lines);
+
+    /* money: particles that run the streets, rise, then gather into the mark */
+    const N = small ? 6500 : 12000;
+    const cv = document.createElement("canvas"); cv.width = cv.height = 200; const cx = cv.getContext("2d");
+    cx.setTransform(.34, 0, 0, .34, -76, -70);
+    cx.fillStyle = "#fff"; cx.fill(new Path2D("M290 250 770 500 290 750V650L578 500 290 350Z"));
+    cx.fillStyle = "#f00"; cx.fill(new Path2D("M419.6 317.5 492 236l23.6 131.5Z"));
+    const px = cx.getImageData(0, 0, 200, 200).data, spots = [];
+    for (let y = 0; y < 200; y++) for (let x = 0; x < 200; x++) { const i = (y * 200 + x) * 4; if (px[i + 3] > 128) spots.push([x, y, px[i + 1] < 128 ? 1 : 0]); }
+    const aFlow = new Float32Array(N * 3), aLogo = new Float32Array(N * 3), aSeed = new Float32Array(N * 4), aTint = new Float32Array(N);
+    const LOGO_Y = 820, S = 2.5;
+    for (let i = 0; i < N; i++) {
+      const type = Math.random() < .42 ? 0 : Math.random() < .72 ? 1 : 2;
+      const street = (Math.floor(rnd(-10, 10)) + .5) * G + rnd(-9, 9);
+      if (type === 0) aFlow.set([rnd(-R, R), rnd(2, 10), street], i * 3);
+      else if (type === 1) aFlow.set([street, rnd(2, 10), rnd(-R, R)], i * 3);
+      else aFlow.set([rnd(-900, 900), rnd(0, 800), rnd(-900, 900)], i * 3);
+      const s = spots[Math.floor(Math.random() * spots.length)];
+      aLogo.set([(s[0] - 100 + Math.random()) * S, LOGO_Y + (100 - s[1] + Math.random()) * S, rnd(-5, 5)], i * 3);
+      aSeed.set([type, rnd(.5, 1.6) * (Math.random() < .5 ? -1 : 1), Math.random(), Math.random()], i * 4);
+      aTint[i] = s[2];
+    }
+    const pg = new THREE.BufferGeometry();
+    pg.setAttribute("position", new THREE.BufferAttribute(aFlow, 3));
+    pg.setAttribute("aLogo", new THREE.BufferAttribute(aLogo, 3));
+    pg.setAttribute("aSeed", new THREE.BufferAttribute(aSeed, 4));
+    pg.setAttribute("aTint", new THREE.BufferAttribute(aTint, 1));
+    ptMat = new THREE.ShaderMaterial({
+      transparent: true, depthWrite: false, depthTest: false, blending: THREE.AdditiveBlending,
+      uniforms: { uTime: { value: 0 }, uMorph: { value: 0 }, uBurst: { value: 0 }, uPx: { value: 1 }, uShow: { value: 0 }, uIv: { value: IV }, uBr: { value: BR } },
+      vertexShader: `attribute vec3 aLogo; attribute vec4 aSeed; attribute float aTint;
+        uniform float uTime, uMorph, uBurst, uPx, uShow; varying float vA; varying float vT; varying float vM;
+        void main(){ vec3 f = position; float R = 1560.; float sp = aSeed.y * 70.;
+          if (aSeed.x < .5) f.x = mod(f.x + uTime * sp + R, 2. * R) - R;
+          else if (aSeed.x < 1.5) f.z = mod(f.z + uTime * sp + R, 2. * R) - R;
+          else f.y = mod(f.y + uTime * abs(sp) * .5, 800.);
+          float m = smoothstep(aSeed.z * .55, aSeed.z * .55 + .45, uMorph); m = m * m * (3. - 2. * m);
+          vec3 l = aLogo + vec3(sin(uTime * 1.3 + aSeed.w * 40.), cos(uTime * 1.1 + aSeed.z * 40.), 0.) * 1.6;
+          vec3 p = mix(f, l, m);
+          float sw = sin(m * 3.14159) * (1.6 + aSeed.w * 2.2); float c = cos(sw), s = sin(sw);
+          p.xz = mat2(c, -s, s, c) * p.xz; p.y += sin(m * 3.14159) * 160. * aSeed.w;
+          vec3 dir = normalize(vec3(aSeed.z - .5, aSeed.w - .5, fract(aSeed.z * 7.3) - .5));
+          p += dir * uBurst * (220. + 520. * aSeed.w);
+          vec4 mv = modelViewMatrix * vec4(p, 1.); gl_Position = projectionMatrix * mv;
+          float size = mix(5. + 7. * aSeed.w, 3.1, m);
+          gl_PointSize = clamp(size * uPx * 900. / -mv.z, 1.6 * uPx, 18. * uPx);
+          float fog = exp(-0.0003 * -mv.z);
+          vA = mix(fog, .8, m) * uShow; vT = aTint; vM = m; }`,
+      fragmentShader: `uniform vec3 uIv; uniform vec3 uBr; varying float vA; varying float vT; varying float vM;
+        void main(){ float d = length(gl_PointCoord - .5); float a = smoothstep(.5, .05, d);
+          vec3 warm = vec3(1., .82, .55); vec3 col = mix(mix(uBr, warm, .35), mix(uIv, mix(uBr, warm, .25), vT), vM);
+          gl_FragColor = vec4(col, a * vA); }`
+    });
+    const pts = new THREE.Points(pg, ptMat); pts.frustumCulled = false; scene.add(pts);
+  }
+
+  /* ---------- camera path ---------- */
+  function keys() {
+    const t = Math.tan(camera.fov * Math.PI / 360);
+    const d = Math.max(520 / (2 * t * (small ? .34 : .44)), 520 / (2 * t * camera.aspect * .72));
+    return [
+      [0.00, V(-260, 980, 1780), V(0, 240, 0)],
+      [0.20, V(520, 620, 1240), V(0, 240, 0)],
+      [0.34, V(120, 70, 640), V(0, 330, 0)],
+      [0.47, V(-190, 190, 400), V(0, 380, 0)],
+      [0.62, V(-520, 900, 1150), V(0, 560, 0)],
+      [0.80, V(0, 820, d * 1.08), V(0, 820, 0)],
+      [1.00, V(0, 820, d), V(0, 820, 0)],
+    ];
+  }
+  let K = [];
+  const cp = ok && V(0, 0, 0), cl = ok && V(0, 0, 0), tv = ok && V(0, 0, 0);
+  function camAt(p) {
+    let i = 0; while (i < K.length - 2 && p > K[i + 1][0]) i++;
+    const a = K[i], b = K[i + 1], u = smooth(a[0], b[0], p);
+    cp.lerpVectors(a[1], b[1], u); cl.lerpVectors(a[2], b[2], u);
+  }
+  function resize() {
+    W = innerWidth; H = innerHeight; small = W < 760;
+    if (!ok) return;
+    const dpr = Math.min(devicePixelRatio || 1, 2);
+    renderer.setPixelRatio(dpr); renderer.setSize(W, H, false);
+    camera.aspect = W / H; camera.fov = small ? 56 : 42; camera.updateProjectionMatrix();
+    ptMat.uniforms.uPx.value = dpr * H / 900;
+    K = keys();
+  }
+  addEventListener("resize", resize); resize();
+
+  /* ---------- state ---------- */
+  let target = 0, p = 0, mx = 0, my = 0, tmx = 0, tmy = 0, burst = 0, started = 0, chapter = -1;
+  const chapters = $$(".chapter"), rail = $$(".rail span"), tags = [$("#t0"), $("#t1"), $("#t2")];
+  const RANGES = [[-1, .19], [.25, .46], [.52, .68], [.78, 2]];
+  const anchors = ok ? [V(48, HERO_H, 48), V(48, HERO_H * .56, -48), V(-48, HERO_H * .2, 48)] : [];
+  const GLYPH = "█▓▒░#/\\=+—01";
+  const cur = $("#cur"); let cx_ = 0, cy_ = 0, ux = 0, uy = 0;
+
+  addEventListener("scroll", () => { const max = document.documentElement.scrollHeight - innerHeight; target = max > 0 ? clamp(scrollY / max) : 0; if (scrollY > 40) document.body.classList.add("moved"); }, { passive: true });
+  addEventListener("pointermove", e => { tmx = e.clientX / W - .5; tmy = e.clientY / H - .5; cur.style.opacity = 1; cx_ = e.clientX; cy_ = e.clientY; }, { passive: true });
+  $$("a, button, input").forEach(el => { el.addEventListener("pointerenter", () => cur.classList.add("big")); el.addEventListener("pointerleave", () => cur.classList.remove("big")); });
+
+  function setChapter(c) {
+    if (c === chapter) return;
+    chapters.forEach((el, i) => {
+      if (i === c) { el.classList.remove("off"); el.classList.add("on"); }
+      else if (el.classList.contains("on") && !el.classList.contains("off")) { el.classList.add("off"); setTimeout(() => { if (el.classList.contains("off")) el.classList.remove("on", "off"); }, 480); }
+    });
+    chapter = c;
+  }
+
+  let last = performance.now(), tick = 0;
+  function frame(now) {
+    const dt = Math.min(.05, (now - last) / 1000); last = now; tick += dt;
+    p += (target - p) * (reduce ? 1 : .075);
+    mx += (tmx - mx) * .05; my += (tmy - my) * .05;
+    ux += (cx_ - ux) * .2; uy += (cy_ - uy) * .2; cur.style.transform = `translate(${ux}px,${uy}px)`;
+
+    let c = -1; RANGES.forEach((r, i) => { if (p >= r[0] && p <= r[1]) c = i; });
+    if (started) setChapter(c);
+    document.body.classList.toggle("end", p > .74);
+    const ri = p < .22 ? 0 : p < .49 ? 1 : p < .72 ? 2 : 3; rail.forEach((el, i) => el.classList.toggle("on", i === ri));
+
+    if (ok) {
+      const t = started ? (now - started) / 1000 : 0;
+      camAt(p);
+      const e4 = smooth(.66, .8, p);
+      camera.position.set(cp.x + mx * 90 * (1 - e4 * .6) + Math.sin(tick * .15) * 40 * (1 - e4), cp.y - my * 50, cp.z);
+      camera.lookAt(cl);
+      // keep the scene clear of the words: shift it right on desktop, up on phones
+      const ox = small ? 0 : -W * .17 * (1 - e4), oy = small ? H * (.17 + .05 * e4) : H * .15 * e4;
+      camera.setViewOffset(W, H, ox, oy, W, H);
+      lineMat.uniforms.uReveal.value = reduce ? 99 : t;
+      lineMat.uniforms.uHero.value = smooth(.24, .34, p) * (1 - smooth(.5, .62, p));
+      lineMat.uniforms.uDim.value = 1 - .6 * smooth(.5, .78, p);
+      ptMat.uniforms.uTime.value = tick;
+      ptMat.uniforms.uShow.value = reduce ? 1 : clamp(t / 2.5 - .4);
+      ptMat.uniforms.uMorph.value = smooth(.5, .8, p);
+      burst *= .94; ptMat.uniforms.uBurst.value = burst;
+      renderer.render(scene, camera);
+
+      const tagOn = p > .29 && p < .47;
+      anchors.forEach((a, i) => {
+        const el = tags[i]; tv.copy(a).project(camera);
+        const sy = (-tv.y * .5 + .5) * H; el.style.opacity = tagOn && tv.z < 1 && sy > 70 && (!small || sy < H * .5) ? 1 : 0;
+        el.style.transform = `translate(${(tv.x * .5 + .5) * W}px, ${(-tv.y * .5 + .5) * H}px) translateY(-50%)`;
+        if (tagOn && Math.floor(tick * 14) !== Math.floor((tick - dt) * 14)) { let s = ""; for (let k = 0; k < 9; k++) s += GLYPH[Math.floor(Math.random() * GLYPH.length)]; el.lastElementChild.textContent = s; }
+      });
+    }
+    requestAnimationFrame(frame);
+  }
+
+  /* ---------- clock ---------- */
+  const clock = $("#clock"), fmt = new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Bangkok", hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  setInterval(() => clock.textContent = fmt.format(new Date()), 1000); clock.textContent = fmt.format(new Date());
+
+  /* ---------- loader ---------- */
+  const ln = $("#ln"), loader = $("#loader");
+  function start() { loader.classList.add("gone"); started = performance.now(); }
+  if (reduce) { ln.innerHTML = "100<em>.</em>"; start(); }
+  else { const t0 = performance.now(); (function count(now) { const u = clamp((now - t0) / 1500), v = Math.round((1 - Math.pow(1 - u, 3)) * 100); ln.innerHTML = v + "<em>.</em>"; if (u < 1) requestAnimationFrame(count); else setTimeout(start, 180); })(t0); }
+  requestAnimationFrame(frame);
+
+  /* ---------- signup: the beehiiv form sits in the page, so nobody leaves ---------- */
+  const form = $("#form"), input = $("#email"), note = $("#note"), bh = $("#bh");
+  addEventListener("message", e => {
+    if (e.origin !== "https://subscribe-forms.beehiiv.com") return;
+    const type = e.data && (e.data.type || "");
+    if (type === "beehiiv:submitted" || type === "BEEHIIV_SUBSCRIBER_FORM_SUBMITTED") { burst = 1; note.textContent = "You're in. Follow the baht."; note.style.color = "#B08D57"; }
+  });
+  // if the embed can't load (blocked, offline, preview), fall back to our own field and a confirm link
+  setTimeout(() => { if (!bh.querySelector("iframe")) { bh.classList.add("off"); form.hidden = false; } }, 4000);
+  form.addEventListener("submit", e => {
+    e.preventDefault();
+    const email = input.value.trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) { note.textContent = "That email doesn't look right."; note.style.color = "#EDE6D6"; input.focus(); return; }
+    burst = 1;
+    note.innerHTML = 'One more tap to confirm: <a href="' + FALLBACK + "?email=" + encodeURIComponent(email) + '" target="_blank" rel="noopener">finish joining</a>';
+    note.style.color = "#EDE6D6";
+  });
+})();
+</script>
+</body>
+</html>
